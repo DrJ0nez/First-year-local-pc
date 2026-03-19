@@ -16,6 +16,10 @@ public class OsmWay extends OsmElement {
     private Path2D.Double cachedPath;
     private boolean isPolygon;
 
+    // Bounding box i map-koordinater (lon*0.56, -lat) – beregnes én gang
+    private double bboxMinX, bboxMinY, bboxMaxX, bboxMaxY;
+    private boolean bboxComputed;
+
     public OsmWay(long id, List<OsmNode> nodes, HashMap<String, String> tags) {
         super(id);
         this.nodes = nodes;
@@ -28,6 +32,38 @@ public class OsmWay extends OsmElement {
 
     public HashMap<String, String> getTags() {
         return tags;
+    }
+
+    /** Beregner og cacher bounding box fra nodes. Kaldes kun én gang. */
+    private void computeBBox() {
+        if (bboxComputed) return;
+        bboxComputed = true;
+        if (nodes == null || nodes.size() < 2) return;
+
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
+
+        for (OsmNode node : nodes) {
+            if (node == null) continue;
+            double x = node.getLon() * 0.56;
+            double y = -node.getLat();
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+
+        bboxMinX = minX;
+        bboxMinY = minY;
+        bboxMaxX = maxX;
+        bboxMaxY = maxY;
+    }
+
+    /** Tjekker om denne way overlapper med det synlige viewport (AABB test) */
+    public boolean isVisible(double vpMinX, double vpMinY, double vpMaxX, double vpMaxY) {
+        computeBBox();
+        return bboxMaxX >= vpMinX && bboxMinX <= vpMaxX
+            && bboxMaxY >= vpMinY && bboxMinY <= vpMaxY;
     }
 
     /** Bygger og cacher Path2D fra nodes. Kaldes kun én gang per way. */
