@@ -3,6 +3,7 @@ package dk.itu.group12.bornholm;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,9 @@ public class App extends DrawingApp {
     private List<OsmWay> ways;
     private final MapFunctions mapFunctions = new MapFunctions();
     private final MapController mapController = new MapController(mapFunctions, this::redraw);
+
+    // Identity transform til at nulstille Graphics2D mellem frames
+    private static final AffineTransform IDENTITY = new AffineTransform();
 
     // Cached coastline – bygges kun én gang ved opstart
     private Path2D cachedCoastline;
@@ -100,7 +104,9 @@ public class App extends DrawingApp {
     private void redraw() {
         Graphics2D gc = getNewGraphicsContext();
 
-        // 1. Hav-baggrund i skærmkoordinater (ingen transform endnu)
+        // 1. Hav-baggrund i skærmkoordinater – nulstil transform først
+        //    (cached Graphics2D beholder transform fra forrige frame)
+        gc.setTransform(IDENTITY);
         gc.setColor(COLOR_SEA);
         gc.fillRect(0, 0, getWIDTH(), getHEIGHT());
 
