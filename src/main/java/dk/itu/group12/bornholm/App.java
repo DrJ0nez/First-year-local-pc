@@ -2,7 +2,11 @@ package dk.itu.group12.bornholm;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.font.FontRenderContext;
+import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
@@ -46,9 +50,18 @@ public class App extends DrawingApp {
     private List<OsmWay> buildings;
     private List<OsmWay> waterways;
 
+    // Highways med navne – til vejnavne-rendering
+    private List<OsmWay> namedHighways;
+
     // Cached stroke – genbruges så længe strokeWidth ikke ændrer sig
     private float lastStrokeWidth = -1;
     private BasicStroke cachedStroke;
+
+    // Font og stroke til vejnavne – oprettes én gang
+    private static final Font ROAD_NAME_FONT = new Font("SansSerif", Font.PLAIN, 12);
+    private static final Color ROAD_NAME_COLOR = new Color(80, 80, 80);
+    private static final BasicStroke HALO_STROKE = new BasicStroke(3f,
+            BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
 
     @Override
     public void start(Stage stage) {
@@ -60,11 +73,12 @@ public class App extends DrawingApp {
         cachedCoastline = stitchCoastline(ways);
 
         // Kategoriser ways én gang ved opstart i stedet for at tjekke tags hver frame
-        highways  = new ArrayList<>();
-        forests   = new ArrayList<>();
-        waters    = new ArrayList<>();
-        buildings = new ArrayList<>();
-        waterways = new ArrayList<>();
+        highways      = new ArrayList<>();
+        namedHighways = new ArrayList<>();
+        forests       = new ArrayList<>();
+        waters        = new ArrayList<>();
+        buildings     = new ArrayList<>();
+        waterways     = new ArrayList<>();
 
         for (OsmWay way : ways) {
             Map<String, String> tags = way.getTags();
@@ -75,6 +89,9 @@ public class App extends DrawingApp {
 
             if (tags.get("highway") != null) {
                 highways.add(way);
+                if (tags.get("name") != null) {
+                    namedHighways.add(way);
+                }
             } else if ("wood".equals(landuse) || "forest".equals(landuse)) {
                 forests.add(way);
             } else if ("water".equals(natural) || "water".equals(landuse)) {
@@ -166,7 +183,85 @@ public class App extends DrawingApp {
             }
         }
 
+        // 7. Tegn vejnavne som sidste lag – i skærmkoordinater for skarp tekst
+        if (zoomLevel > 8000) {
+            drawRoadNames(gc, transform, vpMinX, vpMinY, vpMaxX, vpMaxY);
+        }
+
         render();
+    }
+
+    /** Tegner vejnavne i skærmkoordinater med hvid halo for læsbarhed */
+    private void drawRoadNames(Graphics2D gc, SuperAffine transform,
+                               double vpMinX, double vpMinY, double vpMaxX, double vpMaxY) {
+        // Skift til skærmkoordinater for skarp tekst
+        gc.setTransform(IDENTITY);
+        gc.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        gc.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        gc.setFont(ROAD_NAME_FONT);
+
+        FontRenderContext frc = gc.getFontRenderContext();
+
+        for (OsmWay way : namedHighways) {
+            if (!way.isVisible(vpMinX, vpMinY, vpMaxX, vpMaxY)) continue;
+
+            List<OsmNode> nodes = way.getNodes();
+            if (nodes == null || nodes.size() < 2) continue;
+
+            String name = way.getTags().get("name");
+
+            // Find midtpunktet af vejen for placering
+            int midIdx = nodes.size() / 2;
+            OsmNode midNode = nodes.get(midIdx);
+            OsmNode prevNode = nodes.get(Math.max(0, midIdx - 1));
+            if (midNode == null || prevNode == null) continue;
+
+            // Konverter midtpunkt til skærmkoordinater
+            double mapX = midNode.getLon() * 0.56;
+            double mapY = -midNode.getLat();
+            double[] screenPt = new double[2];
+            transform.transform(new double[]{mapX, mapY}, 0, screenPt, 0, 1);
+            double sx = screenPt[0];
+            double sy = screenPt[1];
+
+            // Spring over hvis teksten er uden for skærmen
+            if (sx < -100 || sx > getWIDTH() + 100 || sy < -20 || sy > getHEIGHT() + 20) continue;
+
+            // Beregn vejens retning for tekstrotation
+            double prevMapX = prevNode.getLon() * 0.56;
+            double prevMapY = -prevNode.getLat();
+            double[] prevScreenPt = new double[2];
+            transform.transform(new double[]{prevMapX, prevMapY}, 0, prevScreenPt, 0, 1);
+
+            double angle = Math.atan2(screenPt[1] - prevScreenPt[1], screenPt[0] - prevScreenPt[0]);
+
+            // Sørg for at tekst altid er læsbar (ikke på hovedet)
+            if (angle > Math.PI / 2) angle -= Math.PI;
+            if (angle < -Math.PI / 2) angle += Math.PI;
+
+            // Tegn med GlyphVector for at kunne lave hvid halo
+            GlyphVector gv = ROAD_NAME_FONT.createGlyphVector(frc, name);
+
+            AffineTransform textTransform = new AffineTransform();
+            textTransform.translate(sx, sy);
+            textTransform.rotate(angle);
+            // Centrer teksten på midtpunktet
+            double textWidth = gv.getLogicalBounds().getWidth();
+            textTransform.translate(-textWidth / 2, 0);
+
+            gc.setTransform(textTransform);
+
+            // Hvid halo – tegn outline af bogstaverne
+            gc.setColor(Color.WHITE);
+            gc.setStroke(HALO_STROKE);
+            gc.draw(gv.getOutline());
+
+            // Selve teksten ovenpå
+            gc.setColor(ROAD_NAME_COLOR);
+            gc.fill(gv.getOutline());
+
+            gc.setTransform(IDENTITY);
+        }
     }
 
     /** Bygger coastline Path2D – kaldes kun én gang ved opstart */
