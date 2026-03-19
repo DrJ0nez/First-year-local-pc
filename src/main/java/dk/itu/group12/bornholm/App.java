@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -126,31 +127,42 @@ public class App extends DrawingApp {
         gc.setColor(COLOR_LAND);
         gc.fill(cachedCoastline);
 
-        // 4. Level of Detail: beregn zoom-niveau for at filtrere detaljer
-        //    getScaleX() giver pixels per map-enhed. Højere = mere zoomet ind.
+        // 4. Beregn synligt viewport i map-koordinater via inverse transform
+        Point2D topLeft     = transform.inverseTransform(0, 0);
+        Point2D bottomRight = transform.inverseTransform(getWIDTH(), getHEIGHT());
+        double vpMinX = Math.min(topLeft.getX(), bottomRight.getX());
+        double vpMinY = Math.min(topLeft.getY(), bottomRight.getY());
+        double vpMaxX = Math.max(topLeft.getX(), bottomRight.getX());
+        double vpMaxY = Math.max(topLeft.getY(), bottomRight.getY());
+
+        // 5. Level of Detail: beregn zoom-niveau for at filtrere detaljer
         double zoomLevel = Math.abs(transform.getScaleX());
 
-        // 5. Tegn kategoriserede ways – ingen tag-opslag i loopet
+        // 6. Tegn kun ways der er synlige i viewport
         for (OsmWay way : forests) {
-            way.draw(gc, COLOR_FOREST, strokeWidth, cachedStroke);
+            if (way.isVisible(vpMinX, vpMinY, vpMaxX, vpMaxY))
+                way.draw(gc, COLOR_FOREST, strokeWidth, cachedStroke);
         }
         for (OsmWay way : waters) {
-            way.draw(gc, COLOR_SEA, strokeWidth, cachedStroke);
+            if (way.isVisible(vpMinX, vpMinY, vpMaxX, vpMaxY))
+                way.draw(gc, COLOR_SEA, strokeWidth, cachedStroke);
         }
         for (OsmWay way : waterways) {
-            way.draw(gc, COLOR_SEA, strokeWidth, cachedStroke);
+            if (way.isVisible(vpMinX, vpMinY, vpMaxX, vpMaxY))
+                way.draw(gc, COLOR_SEA, strokeWidth, cachedStroke);
         }
 
         // Bygninger og highways vises kun når man er zoomet tilstrækkeligt ind
-        // Tærskelværdi: ved fuldt udzoomet Bornholm er scale ca. ~1400-1500
         if (zoomLevel > 3000) {
             for (OsmWay way : highways) {
-                way.draw(gc, Color.GRAY, strokeWidth, cachedStroke);
+                if (way.isVisible(vpMinX, vpMinY, vpMaxX, vpMaxY))
+                    way.draw(gc, Color.GRAY, strokeWidth, cachedStroke);
             }
         }
         if (zoomLevel > 8000) {
             for (OsmWay way : buildings) {
-                way.draw(gc, COLOR_BUILDING, strokeWidth, cachedStroke);
+                if (way.isVisible(vpMinX, vpMinY, vpMaxX, vpMaxY))
+                    way.draw(gc, COLOR_BUILDING, strokeWidth, cachedStroke);
             }
         }
 
