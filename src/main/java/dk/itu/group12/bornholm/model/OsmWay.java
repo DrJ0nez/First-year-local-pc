@@ -12,6 +12,10 @@ public class OsmWay extends OsmElement {
     private final List<OsmNode> nodes;
     private final HashMap<String, String> tags;
 
+    // Cached path – bygges kun én gang, genbruges ved hver redraw
+    private Path2D.Double cachedPath;
+    private boolean isPolygon;
+
     public OsmWay(long id, List<OsmNode> nodes, HashMap<String, String> tags) {
         super(id);
         this.nodes = nodes;
@@ -26,53 +30,64 @@ public class OsmWay extends OsmElement {
         return tags;
     }
 
-    public void draw(Graphics2D gc, Color color, float strokeWidth) {
-        if (nodes == null || nodes.size() < 2) return;
-
-        gc.setColor(color);
-
-        Path2D.Double path = new Path2D.Double();
+    /** Bygger og cacher Path2D fra nodes. Kaldes kun én gang per way. */
+    private Path2D.Double getPath() {
+        if (cachedPath != null) return cachedPath;
+        if (nodes == null || nodes.size() < 2) return null;
 
         OsmNode first = nodes.get(0);
+        if (first == null) return null;
 
-        if (first == null) return;
-        path.moveTo(first.getLon() * 0.56, -first.getLat());
+        cachedPath = new Path2D.Double();
+        cachedPath.moveTo(first.getLon() * 0.56, -first.getLat());
 
         for (int i = 1; i < nodes.size(); i++) {
             OsmNode node = nodes.get(i);
             if (node == null) continue;
-
-            path.lineTo(node.getLon() * 0.56, -node.getLat());
+            cachedPath.lineTo(node.getLon() * 0.56, -node.getLat());
         }
 
-        boolean isPolygon = nodes.size() >= 3 &&
+        isPolygon = nodes.size() >= 3 &&
                 first.getId() == nodes.get(nodes.size() - 1).getId();
+
+        return cachedPath;
+    }
+
+    public void draw(Graphics2D gc, Color color, float strokeWidth, BasicStroke sharedStroke) {
+        Path2D.Double path = getPath();
+        if (path == null) return;
+
+        gc.setColor(color);
 
         if (isPolygon) {
             gc.fill(path);
         } else {
-            gc.setStroke(new BasicStroke(strokeWidth));
+            gc.setStroke(sharedStroke);
             gc.draw(path);
         }
+    }
+
+    /** Overload for bagudkompatibilitet */
+    public void draw(Graphics2D gc, Color color, float strokeWidth) {
+        draw(gc, color, strokeWidth, new BasicStroke(strokeWidth));
     }
 
     public void drawFilled(Graphics2D gc, Color color) {
         if (nodes == null || nodes.size() < 2) return;
 
         gc.setColor(color);
-        Path2D.Double path = new Path2D.Double();
 
-        OsmNode first = nodes.get(0);
-        if (first == null) return;
-        path.moveTo(first.getLon() * 0.56, -first.getLat());
+        // For filled drawing bygger vi en separat lukket path
+        Path2D.Double path = getPath();
+        if (path == null) return;
 
-        for (int i = 1; i < nodes.size(); i++) {
-            OsmNode node = nodes.get(i);
-            if (node == null) continue;
-            path.lineTo(node.getLon() * 0.56, -node.getLat());
+        // Luk stien ved at tegne til startpunktet hvis den ikke allerede er lukket
+        if (!isPolygon) {
+            Path2D.Double closedPath = new Path2D.Double(path);
+            closedPath.closePath();
+            gc.fill(closedPath);
+        } else {
+            gc.fill(path);
         }
-
-        path.closePath(); // lukker stien selvom den ikke er lukket i OSM
-        gc.fill(path);
     }
 }

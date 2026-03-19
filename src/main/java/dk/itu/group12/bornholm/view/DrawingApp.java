@@ -26,15 +26,24 @@ public abstract class DrawingApp extends Application {
     private final BufferedImage bufferedImage = new BufferedImage(
             WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB
     );
-    protected final ImageView imageView = new ImageView();
+    // WritableImage genbruges – oprettes kun én gang
+    private final WritableImage writableImage = new WritableImage(pixelBuffer);
+    protected final ImageView imageView = new ImageView(writableImage);
+
+    // Cache Graphics2D konteksten i stedet for at oprette ny hver frame
+    private Graphics2D cachedGraphics;
 
     public final Graphics2D getNewGraphicsContext() {
-        return bufferedImage.createGraphics();
+        if (cachedGraphics == null) {
+            cachedGraphics = bufferedImage.createGraphics();
+        }
+        return cachedGraphics;
     }
 
     public final void render() {
         int[] pixels = ((DataBufferInt) bufferedImage.getRaster().getDataBuffer()).getData();
         System.arraycopy(pixels, 0, pixelBuffer.getBuffer().array(), 0, pixels.length);
-        imageView.setImage(new WritableImage(pixelBuffer));
+        // Fortæl PixelBuffer at indholdet er ændret – ingen ny WritableImage nødvendig
+        pixelBuffer.updateBuffer(pb -> null);
     }
 }

@@ -1,5 +1,6 @@
 package dk.itu.group12.bornholm;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.Path2D;
@@ -24,11 +25,61 @@ public class App extends DrawingApp {
     private final MapFunctions mapFunctions = new MapFunctions();
     private final MapController mapController = new MapController(mapFunctions, this::redraw);
 
+    // Cached coastline – bygges kun én gang ved opstart
+    private Path2D cachedCoastline;
+
+    // Cached farver – undgår Color.decode() i render-loopet
+    private static final Color COLOR_SEA      = Color.decode("#aad3df");
+    private static final Color COLOR_LAND     = Color.decode("#f0e9dd");
+    private static final Color COLOR_FOREST   = Color.decode("#aed1a0");
+    private static final Color COLOR_BUILDING = Color.decode("#d9b99b");
+
+    // Forud-kategoriserede lister – undgår tag-opslag i render-loopet
+    private List<OsmWay> highways;
+    private List<OsmWay> forests;
+    private List<OsmWay> waters;
+    private List<OsmWay> buildings;
+    private List<OsmWay> waterways;
+
+    // Cached stroke – genbruges så længe strokeWidth ikke ændrer sig
+    private float lastStrokeWidth = -1;
+    private BasicStroke cachedStroke;
+
     @Override
     public void start(Stage stage) {
         osmParser parser = new osmParser("bornholm/bornholm.osm"); //Kan ændres til bornholm, samsø osv.
         parser.parse();
         this.ways = List.copyOf(parser.getOsmWayMap().values());
+
+        // Byg coastline én gang – den ændrer sig aldrig
+        cachedCoastline = stitchCoastline(ways);
+
+        // Kategoriser ways én gang ved opstart i stedet for at tjekke tags hver frame
+        highways  = new ArrayList<>();
+        forests   = new ArrayList<>();
+        waters    = new ArrayList<>();
+        buildings = new ArrayList<>();
+        waterways = new ArrayList<>();
+
+        for (OsmWay way : ways) {
+            Map<String, String> tags = way.getTags();
+            String natural  = tags.get("natural");
+            String landuse  = tags.get("landuse");
+
+            if ("coastline".equals(natural)) continue; // håndteres separat
+
+            if (tags.get("highway") != null) {
+                highways.add(way);
+            } else if ("wood".equals(landuse) || "forest".equals(landuse)) {
+                forests.add(way);
+            } else if ("water".equals(natural) || "water".equals(landuse)) {
+                waters.add(way);
+            } else if (tags.get("building") != null) {
+                buildings.add(way);
+            } else if (tags.get("waterway") != null) {
+                waterways.add(way);
+            }
+        }
 
         List<Double> bb = parser.getBoundingBox();
         mapFunctions.reCenter(new double[]{bb.get(1), bb.get(0), bb.get(3), bb.get(2)}, getHEIGHT());
@@ -50,7 +101,7 @@ public class App extends DrawingApp {
         Graphics2D gc = getNewGraphicsContext();
 
         // 1. Hav-baggrund i skærmkoordinater (ingen transform endnu)
-        gc.setColor(Color.decode("#aad3df"));
+        gc.setColor(COLOR_SEA);
         gc.fillRect(0, 0, getWIDTH(), getHEIGHT());
 
         // 2. Sæt transform
@@ -59,44 +110,48 @@ public class App extends DrawingApp {
 
         float strokeWidth = transform.getStrokeBaseWidth();
 
-        // 3. Tegn kystlinje som ét samlet fyldt polygon
-        Path2D coastline = stitchCoastline(ways);
-        gc.setColor(Color.decode("#f0e9dd"));
-        gc.fill(coastline);
+        // Cache BasicStroke – ny oprettes kun når strokeWidth faktisk ændrer sig
+        if (strokeWidth != lastStrokeWidth) {
+            cachedStroke = new BasicStroke(strokeWidth);
+            lastStrokeWidth = strokeWidth;
+        }
 
-        // 4. Tegn resten ovenpå
-        for (OsmWay way : ways) {
-            Map<String, String> tags = way.getTags();
-            String highway = tags.get("highway");
-            String natural = tags.get("natural");
-            String landuse = tags.get("landuse");
-            String building = tags.get("building");
-            String waterway = tags.get("waterway");
+        // 3. Tegn kystlinje (cached – ingen stitching per frame)
+        gc.setColor(COLOR_LAND);
+        gc.fill(cachedCoastline);
 
-            Color color = null;
+        // 4. Level of Detail: beregn zoom-niveau for at filtrere detaljer
+        //    getScaleX() giver pixels per map-enhed. Højere = mere zoomet ind.
+        double zoomLevel = Math.abs(transform.getScaleX());
 
-            if ("coastline".equals(natural)) {
-                // Allerede tegnet, skip
-            } else if (highway != null) {
-                color = Color.GRAY;
-            } else if ("wood".equals(landuse) || "forest".equals(landuse)) {
-                color = Color.decode("#aed1a0");
-            } else if ("water".equals(natural) || "water".equals(landuse)) {
-                color = Color.decode("#aad3df");
-            } else if (building != null) {
-                color = Color.decode("#d9b99b");
-            } else if (waterway != null) {
-                color = Color.decode("#aad3df");
+        // 5. Tegn kategoriserede ways – ingen tag-opslag i loopet
+        for (OsmWay way : forests) {
+            way.draw(gc, COLOR_FOREST, strokeWidth, cachedStroke);
+        }
+        for (OsmWay way : waters) {
+            way.draw(gc, COLOR_SEA, strokeWidth, cachedStroke);
+        }
+        for (OsmWay way : waterways) {
+            way.draw(gc, COLOR_SEA, strokeWidth, cachedStroke);
+        }
+
+        // Bygninger og highways vises kun når man er zoomet tilstrækkeligt ind
+        // Tærskelværdi: ved fuldt udzoomet Bornholm er scale ca. ~1400-1500
+        if (zoomLevel > 3000) {
+            for (OsmWay way : highways) {
+                way.draw(gc, Color.GRAY, strokeWidth, cachedStroke);
             }
-
-            if (color != null) {
-                way.draw(gc, color, strokeWidth);
+        }
+        if (zoomLevel > 8000) {
+            for (OsmWay way : buildings) {
+                way.draw(gc, COLOR_BUILDING, strokeWidth, cachedStroke);
             }
         }
 
         render();
     }
 
+    /** Bygger coastline Path2D – kaldes kun én gang ved opstart */
     private Path2D stitchCoastline(List<OsmWay> ways) {
         List<List<OsmNode>> segments = new ArrayList<>();
         for (OsmWay way : ways) {
@@ -136,9 +191,7 @@ public class App extends DrawingApp {
 
             for (int i = 1; i < ring.size(); i++) {
                 OsmNode n = ring.get(i);
-                if (n == null) {
-
-                }
+                if (n == null) continue;
                 path.lineTo(n.getLon() * 0.56, -n.getLat());
             }
             path.closePath(); // Luk denne ø og start klar til næste
