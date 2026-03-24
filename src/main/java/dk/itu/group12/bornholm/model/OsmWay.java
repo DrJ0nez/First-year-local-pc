@@ -34,7 +34,7 @@ public class OsmWay extends OsmElement {
         return tags;
     }
 
-    /** Beregner og cacher bounding box fra nodes. Kaldes kun én gang. */
+    //Beregner og cacher bounding box fra nodes.
     private void computeBBox() {
         if (bboxComputed) return;
         bboxComputed = true;
@@ -59,14 +59,14 @@ public class OsmWay extends OsmElement {
         bboxMaxY = maxY;
     }
 
-    /** Tjekker om denne way overlapper med det synlige viewport (AABB test) */
+    //Tjekker om denne way overlapper med det synlige viewport
     public boolean isVisible(double vpMinX, double vpMinY, double vpMaxX, double vpMaxY) {
         computeBBox();
         return bboxMaxX >= vpMinX && bboxMinX <= vpMaxX
-            && bboxMaxY >= vpMinY && bboxMinY <= vpMaxY;
+                && bboxMaxY >= vpMinY && bboxMinY <= vpMaxY;
     }
 
-    /** Bygger og cacher Path2D fra nodes. Kaldes kun én gang per way. */
+    //Bygger og cacher Path2D fra nodes.
     private Path2D.Double getPath() {
         if (cachedPath != null) return cachedPath;
         if (nodes == null || nodes.size() < 2) return null;
@@ -103,7 +103,6 @@ public class OsmWay extends OsmElement {
         }
     }
 
-    /** Overload for bagudkompatibilitet */
     public void draw(Graphics2D gc, Color color, float strokeWidth) {
         draw(gc, color, strokeWidth, new BasicStroke(strokeWidth));
     }
@@ -113,7 +112,6 @@ public class OsmWay extends OsmElement {
 
         gc.setColor(color);
 
-        // For filled drawing bygger vi en separat lukket path
         Path2D.Double path = getPath();
         if (path == null) return;
 

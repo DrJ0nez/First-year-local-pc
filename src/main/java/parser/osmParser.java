@@ -17,6 +17,7 @@ public class osmParser implements IParser {
     private final HashMap<Long, OsmNode> osmNodeMap = new HashMap<>();
     private final HashMap<Long, OsmWay> osmWayMap = new HashMap<>();
     private final HashMap<Long, OsmRelation> osmRelationMap = new HashMap<>();
+    private final HashMap<Long, HeightCurve> heightCurveMap = new HashMap<>();
 
     public osmParser(String filename) {
         this.fileName = filename;
@@ -44,6 +45,7 @@ public class osmParser implements IParser {
                 else if (line.startsWith("<node")) parseNodes(line);
                 else if (line.startsWith("<way")) parseWay(line, br);
                 else if (line.startsWith("<relation")) parseRelation (line, br);
+                else if (line.startsWith("<hc") && !line.startsWith("<hcs")) parseHeightCurve(line, br);
             }
         } catch (IOException e) {
             System.out.println(e.getMessage());
@@ -141,6 +143,33 @@ public class osmParser implements IParser {
         boundingBox.add(getAttributeDouble(line, "maxlat"));
         boundingBox.add(getAttributeDouble(line, "maxlon"));
     }
+
+
+    private void parseHeightCurve(String line, BufferedReader br) throws IOException {
+        long id = getAttributeLong(line, "id");
+        double height = getAttributeDouble(line, "height");
+        List<OsmNode> nodes = new ArrayList<>();
+        List<Coordinate> coords = new ArrayList<>();
+        while ((line = br.readLine()) != null) {
+            line = line.trim();
+            if(line.startsWith("</hc")) break;
+
+            if(line.startsWith("<coords")) {
+                double lat = getAttributeDouble(line, "lat");
+                double lon = getAttributeDouble(line, "lon");
+                coords.add(new Coordinate(lat, lon));
+            }
+
+            if(line.startsWith("<nd")) {
+                long refId = getAttributeLong(line, "ref");
+                OsmNode node = osmNodeMap.get(refId);
+                nodes.add(node);
+            }
+        }
+        HeightCurve hc = new HeightCurve(id, height, coords);
+        heightCurveMap.put(id, hc);
+    }
+
 
     public String getAttribute(String s, String key) {
         String pattern = key + "=\"";

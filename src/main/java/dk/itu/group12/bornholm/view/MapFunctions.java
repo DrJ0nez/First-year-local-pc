@@ -3,7 +3,7 @@ package dk.itu.group12.bornholm.view;
 import dk.itu.group12.bornholm.model.SeaLevelSimulation;
 
 public class MapFunctions {
-    private final SuperAffine transform = new SuperAffine();
+    private static final SuperAffine transform = new SuperAffine();
     private SeaLevelSimulation seaLevelSimulation;
 
      //Skill 1: Panning
@@ -34,7 +34,7 @@ public class MapFunctions {
     }
 
 
-    //Skill 4: ScaleBar for SeaLevel
+    //Skill 4: Slider for SeaLevel
     public void setSeaLevelSimulation(SeaLevelSimulation seaLevelSimulation) {
         this.seaLevelSimulation = seaLevelSimulation;
     }
@@ -45,8 +45,8 @@ public class MapFunctions {
         }
     }
 
-    //Skill 5: ScaleBar for Zoom
-    public double getPixelsPerKM() {
+    //Skill 5: Scalebar logic
+    public static double getPixelsPerKM() {
          double currentScale = transform.getScaleX();
          double metersPerPixel = 1 / (currentScale / (111320 * 0.56));
         return 1000 / metersPerPixel;

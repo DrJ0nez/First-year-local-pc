@@ -56,16 +56,16 @@ public class MapController {
 
         double factor = (delta > 0) ? 1.05 : 0.95;
 
-        double currentValue = zoomSlider.getValue();
-        double newValue = currentValue * factor;
+        //double currentValue = zoomSlider.getValue();
+        //double newValue = currentValue * factor;
 
-        newValue = Math.max(zoomSlider.getMin(), Math.min(zoomSlider.getMax(), newValue));
+        //newValue = Math.max(zoomSlider.getMin(), Math.min(zoomSlider.getMax(), newValue));
 
-        double actualFactor = newValue / currentValue;
+        //double actualFactor = newValue / currentValue;
 
-        mapFunctions.zoom(actualFactor, event.getX(), event.getY());
-        zoomSlider.setValue(newValue);
-        zoomLabel.setText(String.format("Zoom: %.0f%%", newValue * 100));
+        mapFunctions.zoom(factor, event.getX(), event.getY());
+        //zoomSlider.setValue(newValue);
+        //zoomLabel.setText(String.format("Zoom: %.0f%%", newValue * 100));
 
         redrawRequest.run();
     }
